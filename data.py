@@ -47,7 +47,7 @@ def load_node_dataset(dataset, method, hparams, train_ratio=None, dir_path="~/da
             dataset.x_dict["T"] = dataset.x_dict["A"]
         else:
             dataset = HeteroNeighborSampler(DBLP_GTNDataset(), [25, 20], node_types=["A"], head_node_type="A",
-                                            metapaths=["APA", "AP_A", "ACA", "AC_A"] if "LATTE" in method else None,
+                                            metapaths=["APA", "ApA", "ACA", "AcA"] if "LATTE" in method else None,
                                             add_reverse_metapaths=False,
                                             inductive=hparams.inductive)
 
