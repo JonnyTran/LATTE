@@ -6,7 +6,7 @@ Running this code requires installation of Python 3.X packages listed in `requir
 
 It also requires installation of the COGDL Toolkit (version 0.1.2) from the following GitHub
 repository: https://github.com/THUDM/cogdl
-To install it, go to a parent directory and run:
+To install it, run:
 > pip install cogdl==0.1.2
 
 To perform either transductive or inductive experiment runs for a method on a dataset, go to the root repository and run

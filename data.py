@@ -1,6 +1,6 @@
+import logging
 from collections import OrderedDict
 
-import logging
 import networkx as nx
 import numpy as np
 import pandas as pd
@@ -9,7 +9,6 @@ import torch_sparse
 from cogdl.datasets.gtn_data import GTNDataset, ACM_GTNDataset, DBLP_GTNDataset, IMDB_GTNDataset
 from cogdl.datasets.han_data import HANDataset, ACM_HANDataset, DBLP_HANDataset, IMDB_HANDataset
 from ogb.nodeproppred import PygNodePropPredDataset, DglNodePropPredDataset
-from scipy.io import loadmat
 from sklearn.cluster import KMeans
 from torch.utils import data
 from torch_geometric.data import InMemoryDataset
@@ -375,27 +374,6 @@ class HeteroNetDataset(torch.utils.data.Dataset, Network):
         adj = adj.tocoo(copy=False)
         return torch.tensor(np.vstack((adj.row, adj.col)).astype("long"))
 
-    def process_BlogCatalog6k(self, dataset, train_ratio):
-        data = loadmat(dataset)  # From http://dmml.asu.edu/users/xufei/Data/blogcatalog6k.mat
-        self._name = "BlogCatalog3"
-        self.y_index_dict = {"user": torch.arange(data["friendship"].shape[0]),
-                             "tag": torch.arange(data["tagnetwork"].shape[0])}
-        self.node_types = ["user", "tag"]
-        self.head_node_type = "user"
-        self.y_dict = {self.head_node_type: torch.tensor(data["usercategory"].toarray().astype(int))}
-        print("self.y_dict", {k: v.shape for k, v in self.y_dict.items()})
-
-        self.metapaths = [("user", "usertag", "tag"),
-                          ("tag", "tagnetwork", "tag"),
-                          ("user", "friendship", "user"), ]
-        self.edge_index_dict = {
-            ("user", "friendship", "user"): self.sps_adj_to_edgeindex(data["friendship"]),
-            ("user", "usertag", "tag"): self.sps_adj_to_edgeindex(data["usertag"]),
-            ("tag", "tagnetwork", "tag"): self.sps_adj_to_edgeindex(data["tagnetwork"])}
-        self.num_nodes_dict = self.get_num_nodes_dict(self.edge_index_dict)
-        assert train_ratio is not None
-        self.training_idx, self.validation_idx, self.testing_idx = self.split_train_val_test(train_ratio)
-
     def process_COGDLdataset(self, dataset: HANDataset, metapath, node_types, train_ratio):
         data = dataset.data
         assert self.head_node_type is not None
@@ -441,19 +419,6 @@ class HeteroNetDataset(torch.utils.data.Dataset, Network):
 
         self.data = data
 
-    def process_stellargraph(self, dataset, metapath, node_types, train_ratio):
-        graph = dataset.load()
-        self.node_types = graph.node_types if node_types is None else node_types
-        self.metapaths = graph.metapaths
-        self.y_index_dict = {k: torch.tensor(graph.nodes(k, use_ilocs=True)) for k in graph.node_types}
-
-        edgelist = graph.edges(include_edge_type=True, use_ilocs=True)
-        edge_index_dict = {path: [] for path in metapath}
-        for u, v, t in edgelist:
-            edge_index_dict[metapath[t]].append([u, v])
-        self.edge_index_dict = {metapath: torch.tensor(edges, dtype=torch.long).T for metapath, edges in
-                                edge_index_dict.items()}
-        self.training_node, self.validation_node, self.testing_node = self.split_train_val_test(train_ratio)
 
     def process_inmemorydataset(self, dataset: InMemoryDataset, train_ratio):
         data = dataset[0]
@@ -481,14 +446,6 @@ class HeteroNetDataset(torch.utils.data.Dataset, Network):
                                  shuffle=True, num_workers=num_workers,
                                  collate_fn=collate_fn if callable(collate_fn) else self.get_collate_fn(collate_fn,
                                                                                                         mode="train",
-                                                                                                        **kwargs))
-        return loader
-
-    def valtrain_dataloader(self, collate_fn=None, batch_size=128, num_workers=12, **kwargs):
-        loader = data.DataLoader(torch.cat([self.training_idx, self.validation_idx]), batch_size=batch_size,
-                                 shuffle=True, num_workers=num_workers,
-                                 collate_fn=collate_fn if callable(collate_fn) else self.get_collate_fn(collate_fn,
-                                                                                                        mode="validation",
                                                                                                         **kwargs))
         return loader
 

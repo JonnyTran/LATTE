@@ -5,8 +5,6 @@ import numpy as np
 import pytorch_lightning as pl
 import torch
 from cogdl.models.emb.hin2vec import Hin2vec, RWgraph, Hin2vec_layer, tqdm
-from cogdl.models.nn.pyg_gtn import GTN as Gtn
-from cogdl.models.nn.pyg_han import HAN as Han
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import precision_recall_fscore_support
 from sklearn.multiclass import OneVsRestClassifier
@@ -18,6 +16,8 @@ from torch_geometric.nn.inits import glorot
 
 from conv import LATTE
 from data import HeteroNetDataset
+from gtn import GTN as Gtn
+from gtn import HAN as Han
 from hgt import HGTModel
 from losses import ClassificationLoss
 from trainer import NodeClfTrainer

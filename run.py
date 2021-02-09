@@ -16,7 +16,7 @@ from pytorch_lightning.trainer import Trainer
 
 from pytorch_lightning.callbacks import EarlyStopping
 
-from models import MetaPath2Vec, HAN, GTN, HGT, LATTENodeClf
+from methods.models import MetaPath2Vec, HAN, GTN, HGT, LATTENodeClf
 from pytorch_lightning.loggers import WandbLogger
 
 from data import load_node_dataset
@@ -33,35 +33,35 @@ def train(hparams):
     METRICS = ["precision", "recall", "f1", "accuracy", "top_k" if dataset.multilabel else "ogbn-mag", ]
 
     if hparams.method == "HAN":
-        USE_AMP = True
+        USE_AMP = False
         model_hparams = {
             "embedding_dim": EMBEDDING_DIM,
-            "batch_size": 2 ** batch_order * NUM_GPUS,
+            "batch_size": 2 ** batch_order,
             "num_layers": 2,
             "collate_fn": "HAN_batch",
             "train_ratio": dataset.train_ratio,
             "loss_type": "BINARY_CROSS_ENTROPY" if dataset.multilabel else "SOFTMAX_CROSS_ENTROPY",
             "n_classes": dataset.n_classes,
-            "lr": 0.0005 * NUM_GPUS,
+            "lr": 0.001,
         }
         model = HAN(Namespace(**model_hparams), dataset=dataset, metrics=METRICS)
     elif hparams.method == "GTN":
-        USE_AMP = True
+        USE_AMP = False
         model_hparams = {
             "embedding_dim": EMBEDDING_DIM,
             "num_channels": len(dataset.metapaths),
             "num_layers": 2,
-            "batch_size": 2 ** batch_order * NUM_GPUS,
+            "batch_size": 2 ** batch_order,
             "collate_fn": "HAN_batch",
             "train_ratio": dataset.train_ratio,
             "loss_type": "BINARY_CROSS_ENTROPY" if dataset.multilabel else "SOFTMAX_CROSS_ENTROPY",
             "n_classes": dataset.n_classes,
-            "lr": 0.0005 * NUM_GPUS,
+            "lr": 0.001,
         }
         model = GTN(Namespace(**model_hparams), dataset=dataset, metrics=METRICS)
 
     elif hparams.method == "MetaPath2Vec":
-        USE_AMP = True
+        USE_AMP = False
         model_hparams = {
             "embedding_dim": EMBEDDING_DIM,
             "walk_length": 50,
@@ -69,10 +69,10 @@ def train(hparams):
             "walks_per_node": 5,
             "num_negative_samples": 5,
             "sparse": True,
-            "batch_size": 400 * NUM_GPUS,
+            "batch_size": 400,
             "train_ratio": dataset.train_ratio,
             "n_classes": dataset.n_classes,
-            "lr": 0.01 * NUM_GPUS,
+            "lr": 0.01,
         }
         model = MetaPath2Vec(Namespace(**model_hparams), dataset=dataset, metrics=METRICS)
 
@@ -114,7 +114,7 @@ def train(hparams):
         model_hparams = {
             "embedding_dim": EMBEDDING_DIM,
             "t_order": t_order,
-            "batch_size": 2 ** batch_order * max(num_gpus, 1),
+            "batch_size": 2 ** batch_order,
             "nb_cls_dense_size": 0,
             "nb_cls_dropout": 0.4,
             "activation": "relu",
@@ -126,7 +126,7 @@ def train(hparams):
             "neg_sampling_ratio": 2.0,
             "n_classes": dataset.n_classes,
             "use_class_weights": False,
-            "lr": 0.001 * num_gpus,
+            "lr": 0.001,
             "momentum": 0.9,
             "weight_decay": 1e-2,
         }
@@ -157,9 +157,10 @@ def train(hparams):
         precision=16 if USE_AMP else 32
     )
     trainer.fit(model)
-    trainer.test(model)
 
     model.register_hooks()
+    trainer.test(model)
+
     wandb_logger.log_metrics(model.clustering_metrics(n_runs=10, compare_node_types=False))
 
 

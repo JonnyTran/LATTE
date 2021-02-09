@@ -1,8 +1,9 @@
-sklearn
+scikit-learn
 networkx
 pandas
 numpy
 torch
+networkx
 pytorch-lightning
 torch-geometric
 pytorch-ignite
