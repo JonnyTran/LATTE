@@ -1,19 +1,19 @@
-import copy, logging, random
+import copy
+import logging
+import random
+
 import numpy as np
 import pandas as pd
+import pytorch_lightning as pl
 import torch
-from torch import nn as nn
-
 import torch.nn.functional as F
+import torch_sparse
+from torch import nn as nn
 from torch_geometric.nn import MessagePassing
 from torch_geometric.nn.inits import glorot
 from torch_geometric.utils import softmax
-import torch_sparse
 from torch_sparse.tensor import SparseTensor
-from torch_sparse.matmul import matmul
-import pytorch_lightning as pl
 
-from utils import preprocess_input, tensor_sizes
 
 class LATTE(nn.Module):
     def __init__(self, t_order: int, embedding_dim: int, in_channels_dict: dict, num_nodes_dict: dict, metapaths: list,
@@ -206,8 +206,6 @@ class LATTEConv(MessagePassing, pl.LightningModule):
             [nn.Linear(embedding_dim, 1, bias=True) for metapath in self.metapaths])
         self.attn_r = nn.ModuleList(
             [nn.Linear(embedding_dim, 1, bias=True) for metapath in self.metapaths])
-        # self.attn_q = nn.ModuleList(
-        #     [nn.Sequential(nn.Tanh(), nn.Linear(2 * self.out_channels, 1, bias=False)) for metapath in self.metapaths])
 
         if attn_activation == "sharpening":
             self.alpha_activation = nn.Parameter(torch.Tensor(len(self.metapaths)).fill_(1.0))
@@ -367,7 +365,6 @@ class LATTEConv(MessagePassing, pl.LightningModule):
     def get_beta_weights(self, x_dict, h_dict, h_prev, global_node_idx):
         beta = {}
         for node_type in global_node_idx:
-            # beta[node_type] = self.conv[node_type].forward(h_dict[node_type].unsqueeze(-1))
             if self.first:
                 if node_type in x_dict:
                     beta[node_type] = self.conv[node_type].forward(x_dict[node_type].unsqueeze(-1))
@@ -381,10 +378,7 @@ class LATTEConv(MessagePassing, pl.LightningModule):
         return beta
 
     def predict_scores(self, edge_index, alpha_l, alpha_r, metapath, logits=False):
-        assert metapath in self.metapaths, f"If metapath `{metapath}` is tag_negative()'ed, then pass it with untag_negative()"
-
-        # e_pred = self.attn_q[self.metapaths.index(metapath)].forward(
-        #     torch.cat([alpha_l[metapath][edge_index[0]], alpha_r[metapath][edge_index[1]]], dim=1)).squeeze(-1)
+        assert metapath in self.metapaths, f"If metapath `{metapath}` not in {self.metapaths}"
 
         e_pred = self.attn_activation(alpha_l[metapath][edge_index[0]] + alpha_r[metapath][edge_index[1]],
                                       metapath_id=self.metapaths.index(metapath)).squeeze(-1)

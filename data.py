@@ -38,9 +38,9 @@ def load_node_dataset(dataset, method, hparams, train_ratio=None, dir_path="~/Bi
                                             add_reverse_metapaths=True,
                                             resample_train=train_ratio, inductive=hparams.inductive)
         elif "LATTE" in method:
-            dataset = HeteroNeighborSampler(DBLP_HANDataset(), [25, 20],
-                                            node_types=["A", "P", "C", "T"], head_node_type="A",
-                                            metapaths=["AC", "AP", "AT"],
+            dataset = HeteroNeighborSampler(DBLP_HANDataset(), node_types=["A"], head_node_type="A",
+                                            metapaths=["APA", "AP_A", "ACA"],
+                                            neighbor_sizes=[25, 20],
                                             add_reverse_metapaths=True,
                                             resample_train=train_ratio, inductive=hparams.inductive)
         else:

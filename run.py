@@ -16,7 +16,7 @@ from pytorch_lightning.trainer import Trainer
 
 from pytorch_lightning.callbacks import EarlyStopping
 
-from methods.models import MetaPath2Vec, HAN, GTN, HGT, LATTENodeClf
+from models import MetaPath2Vec, HAN, GTN, HGT, LATTENodeClf
 from pytorch_lightning.loggers import WandbLogger
 
 from data import load_node_dataset
