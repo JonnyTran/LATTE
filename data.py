@@ -25,13 +25,6 @@ def load_node_dataset(dataset, method, hparams, train_ratio=None, dir_path="~/da
                                             metapaths=["PAP", "PSP"] if "LATTE" in method else None,
                                             add_reverse_metapaths=True,
                                             head_node_type="P", inductive=hparams.inductive)
-        elif "LATTE" in method:
-            dataset = HeteroNeighborSampler(ACM_HANDataset(), [25, 20],
-                                            node_types=["P", "S", "A"], head_node_type="P",
-                                            metapaths=["PA", "PS"],
-                                            add_reverse_metapaths=True, inductive=hparams.inductive)
-            dataset.x_dict["S"] = dataset.x_dict["P"]
-            dataset.x_dict["A"] = dataset.x_dict["P"]
         else:
             dataset = HeteroNeighborSampler(ACM_GTNDataset(), [25, 20], node_types=["P"],
                                             metapaths=["PAP", "PA_P", "PSP", "PS_P"] if "LATTE" in method else None,

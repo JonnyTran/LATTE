@@ -378,7 +378,7 @@ class LATTEConv(MessagePassing, pl.LightningModule):
         return beta
 
     def predict_scores(self, edge_index, alpha_l, alpha_r, metapath, logits=False):
-        assert metapath in self.metapaths, f"If metapath `{metapath}` not in {self.metapaths}"
+        assert metapath in self.metapaths, f"metapath `{metapath}` not in {self.metapaths}"
 
         e_pred = self.attn_activation(alpha_l[metapath][edge_index[0]] + alpha_r[metapath][edge_index[1]],
                                       metapath_id=self.metapaths.index(metapath)).squeeze(-1)
