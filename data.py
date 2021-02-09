@@ -18,36 +18,45 @@ from torch_geometric.utils.hetero import group_hetero_graph
 from conv import is_negative, LATTE
 
 
-def load_node_dataset(dataset, method, hparams, train_ratio=None, dir_path="~/Bioinformatics_ExternalData/OGB/"):
+def load_node_dataset(dataset, method, hparams, train_ratio=None, dir_path="~/datasets/"):
     if dataset == "ACM":
         if method == "HAN" or method == "MetaPath2Vec":
             dataset = HeteroNeighborSampler(ACM_HANDataset(), [25, 20], node_types=["P"],
                                             metapaths=["PAP", "PSP"] if "LATTE" in method else None,
                                             add_reverse_metapaths=True,
-                                            head_node_type="P", resample_train=train_ratio, inductive=hparams.inductive)
+                                            head_node_type="P", inductive=hparams.inductive)
+        elif "LATTE" in method:
+            dataset = HeteroNeighborSampler(ACM_HANDataset(), [25, 20],
+                                            node_types=["P", "S", "A"], head_node_type="P",
+                                            metapaths=["PA", "PS"],
+                                            add_reverse_metapaths=True, inductive=hparams.inductive)
+            dataset.x_dict["S"] = dataset.x_dict["P"]
+            dataset.x_dict["A"] = dataset.x_dict["P"]
         else:
             dataset = HeteroNeighborSampler(ACM_GTNDataset(), [25, 20], node_types=["P"],
                                             metapaths=["PAP", "PA_P", "PSP", "PS_P"] if "LATTE" in method else None,
                                             add_reverse_metapaths=False,
-                                            head_node_type="P", resample_train=train_ratio, inductive=hparams.inductive)
+                                            head_node_type="P", inductive=hparams.inductive)
 
     elif dataset == "DBLP":
         if method == "HAN":
             dataset = HeteroNeighborSampler(DBLP_HANDataset(), [25, 20],
                                             node_types=["A"], head_node_type="A", metapaths=None,
                                             add_reverse_metapaths=True,
-                                            resample_train=train_ratio, inductive=hparams.inductive)
+                                            inductive=hparams.inductive)
         elif "LATTE" in method:
-            dataset = HeteroNeighborSampler(DBLP_HANDataset(), node_types=["A"], head_node_type="A",
-                                            metapaths=["APA", "AP_A", "ACA"],
-                                            neighbor_sizes=[25, 20],
-                                            add_reverse_metapaths=True,
-                                            resample_train=train_ratio, inductive=hparams.inductive)
+            dataset = HeteroNeighborSampler(DBLP_HANDataset(), neighbor_sizes=[25, 20],
+                                            node_types=["A", "P", "C", "T"], head_node_type="A",
+                                            metapaths=[("A", "AC", "C"), ("A", "AP", "P"), ("A", "AT", "T")],
+                                            add_reverse_metapaths=True, inductive=hparams.inductive)
+            dataset.x_dict["P"] = dataset.x_dict["A"]
+            dataset.x_dict["C"] = dataset.x_dict["A"]
+            dataset.x_dict["T"] = dataset.x_dict["A"]
         else:
             dataset = HeteroNeighborSampler(DBLP_GTNDataset(), [25, 20], node_types=["A"], head_node_type="A",
                                             metapaths=["APA", "AP_A", "ACA", "AC_A"] if "LATTE" in method else None,
                                             add_reverse_metapaths=False,
-                                            resample_train=train_ratio, inductive=hparams.inductive)
+                                            inductive=hparams.inductive)
 
     elif dataset == "IMDB":
         if method == "HAN" or method == "MetaPath2Vec":
@@ -55,7 +64,7 @@ def load_node_dataset(dataset, method, hparams, train_ratio=None, dir_path="~/Bi
                                             metapaths=["MAM", "MDM", "MWM"] if "LATTE" in method else None,
                                             add_reverse_metapaths=True,
                                             head_node_type="M",
-                                            resample_train=train_ratio, inductive=hparams.inductive)
+                                            inductive=hparams.inductive)
         else:
             dataset = HeteroNeighborSampler(IMDB_GTNDataset(), neighbor_sizes=[25, 20], node_types=["M"],
                                             metapaths=["MDM", "MD_M", "MAM", "MA_M"] if "LATTE" in method else None,
