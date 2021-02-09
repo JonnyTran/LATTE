@@ -11,10 +11,10 @@ from pytorch_lightning.trainer import Trainer
 
 from pytorch_lightning.callbacks import EarlyStopping
 
-from moge.module.PyG.node_clf import MetaPath2Vec, HAN, GTN, HGT, LATTENodeClf
+from models import MetaPath2Vec, HAN, GTN, HGT, LATTENodeClf
 from pytorch_lightning.loggers import WandbLogger
 
-from run.utils import load_node_dataset
+from data import load_node_dataset
 
 def train(hparams):
     EMBEDDING_DIM = 128

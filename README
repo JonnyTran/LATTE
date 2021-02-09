@@ -1,4 +1,4 @@
-This code is provided to reproduce experiments in the paper "Layer-stacked Attention for Heterogeneous Network Embedding".
+This code is provided to reproduce experiments in the paper "Layer-stacked Attention for Heterogeneous Graph Embedding".
 Running this code requires installation of Python 3.X packages listed in `requirements.txt`. Install them by running:
 >>> pip install -r requirements.txt
 

@@ -7,3 +7,8 @@ pytorch-lightning
 torch-geometric
 pytorch-ignite
 ogb
+cogdl
+boto
+wandb
+sqlalchemy
+matplotlib

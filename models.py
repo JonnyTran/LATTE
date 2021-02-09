@@ -1,29 +1,33 @@
-import itertools
+from collections import OrderedDict
 import multiprocessing
+import itertools
+from argparse import ArgumentParser
+
 import numpy as np
-
 import pandas as pd
-import pytorch_lightning as pl
-import torch
-from cogdl.models.emb.hin2vec import Hin2vec, Hin2vec_layer, RWgraph, tqdm
 from sklearn.linear_model import LogisticRegression
-from sklearn.metrics import precision_recall_fscore_support
 from sklearn.multiclass import OneVsRestClassifier
+from sklearn.metrics import precision_recall_fscore_support
+
+import torch
+from torch import nn
 from torch.nn import functional as F
-from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch_geometric.nn import MetaPath2Vec as Metapath2vec
+from torch_geometric.utils import remove_self_loops, add_self_loops
+import pytorch_lightning as pl
+from torch.optim.lr_scheduler import ReduceLROnPlateau
+from torch_geometric.nn.inits import glorot, zeros
 
-from moge.module.cogdl.conv import GTN as Gtn
-from moge.module.cogdl.conv import HAN as Han
+from cogdl.models.nn.pyg_gtn import GTN as Gtn
+from cogdl.models.nn.pyg_han import HAN as Han
+from cogdl.models.emb.hin2vec import Hin2vec, RWgraph, Hin2vec_layer, tqdm
 
-from moge.generator import HeteroNetDataset
-from moge.module.PyG.latte import LATTE
-from moge.module.PyG.hgt import HGTModel, Graph, sample_subgraph, feature_MAG, to_torch
-from moge.module.classifier import DenseClassification
-from moge.module.losses import ClassificationLoss
-from moge.module.metrics import Metrics
-from moge.module.trainer import NodeClfTrainer
-from moge.module.utils import filter_samples
+from data import HeteroNetDataset
+from utils import Metrics
+from conv import LATTE
+from losses import ClassificationLoss
+from trainer import NodeClfTrainer
+from utils import filter_samples
 
 
 class LATTENodeClf(NodeClfTrainer):
@@ -756,3 +760,150 @@ class HIN2Vec(Hin2vec):
             return torch.optim.SparseAdam(self.parameters(), lr=self.hparams.lr)
         else:
             return torch.optim.Adam(self.parameters(), lr=self.hparams.lr)
+
+
+class NodeClfTrainer(ClusteringEvaluator):
+    def __init__(self, hparams, dataset, metrics, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        self.train_metrics = Metrics(prefix="", loss_type=hparams.loss_type, n_classes=dataset.n_classes,
+                                     multilabel=dataset.multilabel, metrics=metrics)
+        self.valid_metrics = Metrics(prefix="val_", loss_type=hparams.loss_type, n_classes=dataset.n_classes,
+                                     multilabel=dataset.multilabel, metrics=metrics)
+        self.test_metrics = Metrics(prefix="test_", loss_type=hparams.loss_type, n_classes=dataset.n_classes,
+                                    multilabel=dataset.multilabel, metrics=metrics)
+        hparams.name = self.name()
+        hparams.inductive = dataset.inductive
+        self.hparams = hparams
+
+    def name(self):
+        if hasattr(self, "_name"):
+            return self._name
+        else:
+            return self.__class__.__name__
+
+    def training_epoch_end(self, outputs):
+        avg_loss = torch.stack([x["loss"] for x in outputs]).mean().item()
+        logs = self.train_metrics.compute_metrics()
+        # logs = _fix_dp_return_type(logs, device=outputs[0]["loss"].device)
+
+        logs.update({"loss": avg_loss})
+        self.train_metrics.reset_metrics()
+        self.log_dict(logs)
+        return None
+
+    def validation_epoch_end(self, outputs):
+        avg_loss = torch.stack([x["val_loss"] for x in outputs]).mean().item()
+        logs = self.valid_metrics.compute_metrics()
+        # logs = _fix_dp_return_type(logs, device=outputs[0]["val_loss"].device)
+        # print({k: np.around(v.item(), decimals=3) for k, v in logs.items()})
+
+        logs.update({"val_loss": avg_loss})
+        self.valid_metrics.reset_metrics()
+        self.log_dict(logs, prog_bar=logs)
+        return None
+
+    def test_epoch_end(self, outputs):
+        avg_loss = torch.stack([x["test_loss"] for x in outputs]).mean().item()
+        if hasattr(self, "test_metrics"):
+            logs = self.test_metrics.compute_metrics()
+            self.test_metrics.reset_metrics()
+        else:
+            logs = {}
+        logs.update({"test_loss": avg_loss})
+
+        self.log_dict(logs, prog_bar=logs)
+        return None
+
+    def train_dataloader(self):
+        return self.dataset.train_dataloader(collate_fn=self.collate_fn, batch_size=self.hparams.batch_size)
+
+    def val_dataloader(self):
+        return self.dataset.valid_dataloader(collate_fn=self.collate_fn, batch_size=self.hparams.batch_size)
+
+    def valtrain_dataloader(self):
+        return self.dataset.valtrain_dataloader(collate_fn=self.collate_fn,
+                                                batch_size=self.hparams.batch_size)
+
+    def test_dataloader(self):
+        return self.dataset.test_dataloader(collate_fn=self.collate_fn, batch_size=self.hparams.batch_size)
+
+    def print_pred_class_counts(self, y_hat, y, multilabel, n_top_class=8):
+        if multilabel:
+            y_pred_dict = pd.Series(y_hat.sum(1).detach().cpu().type(torch.int).numpy()).value_counts().to_dict()
+            y_true_dict = pd.Series(y.sum(1).detach().cpu().type(torch.int).numpy()).value_counts().to_dict()
+            print(f"y_pred {len(y_pred_dict)} classes",
+                  {str(k): v for k, v in itertools.islice(y_pred_dict.items(), n_top_class)})
+            print(f"y_true {len(y_true_dict)} classes",
+                  {str(k): v for k, v in itertools.islice(y_true_dict.items(), n_top_class)})
+        else:
+            y_pred_dict = pd.Series(y_hat.argmax(1).detach().cpu().type(torch.int).numpy()).value_counts().to_dict()
+            y_true_dict = pd.Series(y.detach().cpu().type(torch.int).numpy()).value_counts().to_dict()
+            print(f"y_pred {len(y_pred_dict)} classes",
+                  {str(k): v for k, v in itertools.islice(y_pred_dict.items(), n_top_class)})
+            print(f"y_true {len(y_true_dict)} classes",
+                  {str(k): v for k, v in itertools.islice(y_true_dict.items(), n_top_class)})
+
+    def get_n_params(self):
+        size = 0
+        for name, param in dict(self.named_parameters()).items():
+            nn = 1
+            for s in list(param.size()):
+                nn = nn * s
+            size += nn
+        return size
+
+
+class DenseClassification(nn.Module):
+    def __init__(self, hparams) -> None:
+        super(DenseClassification, self).__init__()
+
+        # Classifier
+        if hparams.nb_cls_dense_size > 0:
+            self.fc_classifier = nn.Sequential(OrderedDict([
+                ("linear_1", nn.Linear(hparams.embedding_dim, hparams.nb_cls_dense_size)),
+                ("relu", nn.ReLU()),
+                ("dropout", nn.Dropout(p=hparams.nb_cls_dropout)),
+                ("linear", nn.Linear(hparams.nb_cls_dense_size, hparams.n_classes))
+            ]))
+        else:
+            if hparams.nb_cls_dropout > 0.0:
+                self.fc_classifier = nn.Sequential(OrderedDict([
+                    ("dropout", nn.Dropout(p=hparams.nb_cls_dropout)),
+                    ("linear", nn.Linear(hparams.embedding_dim, hparams.n_classes))
+                ]))
+            else:
+                self.fc_classifier = nn.Sequential(OrderedDict([
+                    ("linear", nn.Linear(hparams.embedding_dim, hparams.n_classes))
+                ]))
+
+        # Activation
+        if "LOGITS" in hparams.loss_type or "FOCAL" in hparams.loss_type:
+            print("INFO: Output of `_classifier` is logits")
+        elif "NEGATIVE_LOG_LIKELIHOOD" == hparams.loss_type:
+            print("INFO: Output of `_classifier` is LogSoftmax")
+            self.fc_classifier.add_module("pred_activation", nn.LogSoftmax(dim=1))
+        elif "SOFTMAX_CROSS_ENTROPY" == hparams.loss_type:
+            print("INFO: Output of `_classifier` is logits")
+        elif "BCE" == hparams.loss_type:
+            print("INFO: Output of `_classifier` is sigmoid probabilities")
+            self.fc_classifier.add_module("pred_activation", nn.Sigmoid())
+        else:
+            print("INFO: [Else Case] Output of `_classifier` is logits")
+        self.reset_parameters()
+
+    @staticmethod
+    def add_model_specific_args(parent_parser):
+        parser = ArgumentParser(parents=[parent_parser])
+        parser.add_argument('--nb_cls_dense_size', type=int, default=512)
+        parser.add_argument('--nb_cls_dropout', type=float, default=0.2)
+        parser.add_argument('--n_classes', type=int, default=128)
+        return parser
+
+    def forward(self, embeddings):
+        return self.fc_classifier(embeddings)
+
+    def reset_parameters(self):
+        for linear in self.fc_classifier:
+            if isinstance(linear, torch.nn.Linear):
+                glorot(linear.weight)
