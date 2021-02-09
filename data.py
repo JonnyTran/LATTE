@@ -1,22 +1,22 @@
 from collections import OrderedDict
-import networkx as nx
-import pandas as pd
-import numpy as np
 
-import torch, logging
+import logging
+import networkx as nx
+import numpy as np
+import pandas as pd
+import torch
+import torch_sparse
 from cogdl.datasets.gtn_data import GTNDataset, ACM_GTNDataset, DBLP_GTNDataset, IMDB_GTNDataset
 from cogdl.datasets.han_data import HANDataset, ACM_HANDataset, DBLP_HANDataset, IMDB_HANDataset
-
-from ogb.nodeproppred import PygNodePropPredDataset
+from ogb.nodeproppred import PygNodePropPredDataset, DglNodePropPredDataset
+from scipy.io import loadmat
 from sklearn.cluster import KMeans
-
 from torch.utils import data
-
+from torch_geometric.data import InMemoryDataset
 from torch_geometric.data import NeighborSampler
 from torch_geometric.utils.hetero import group_hetero_graph
-import torch_sparse
 
-from conv import is_negative
+from conv import is_negative, LATTE
 
 
 def load_node_dataset(dataset, method, hparams, train_ratio=None, dir_path="~/Bioinformatics_ExternalData/OGB/"):
@@ -210,17 +210,6 @@ class HeteroNetDataset(torch.utils.data.Dataset, Network):
             print("DGLNodePropPredDataset Hetero")
             self.process_DglNodeDataset_hetero(dataset)
 
-        elif isinstance(dataset, PygLinkPropPredDataset) and hasattr(dataset[0], "edge_reltype") and \
-                not hasattr(dataset[0], "edge_index_dict"):
-            print("PygLink_edge_reltype_dataset Hetero (use TripletSampler class)")
-            self.process_edge_reltype_dataset(dataset)
-        elif isinstance(dataset, PygLinkPropPredDataset) and hasattr(dataset[0], "edge_index_dict"):
-            print("PygLinkDataset Hetero (use TripletSampler class)")
-            self.process_PygLinkDataset_hetero(dataset)
-        elif isinstance(dataset, PygLinkPropPredDataset) and not hasattr(dataset[0], "edge_index_dict") \
-                and not hasattr(dataset[0], "edge_reltype"):
-            print("PygLinkDataset Homo (use EdgeSampler class)")
-            self.process_PygLinkDataset_homo(dataset)
 
         elif isinstance(dataset, InMemoryDataset):
             print("InMemoryDataset")

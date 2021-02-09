@@ -154,7 +154,8 @@ def train(hparams):
     trainer.fit(model)
     trainer.test(model)
 
-    wandb_logger.log_metrics(model.clustering_metrics(compare_node_types=True))
+    model.register_hooks()
+    wandb_logger.log_metrics(model.clustering_metrics(n_runs=10, compare_node_types=False))
 
 
 if __name__ == "__main__":
@@ -164,7 +165,7 @@ if __name__ == "__main__":
 
     parser.add_argument('--dataset', type=str, default="ACM", help="[ACM, DBLP, IMDB]")
     parser.add_argument('--method', type=str, default="LATTE-1",
-                        help="[MetaPath2Vec, HAN, GTN, HGT, LATTE-1, LATTE-2, LATTE-2 proximity]")
+                        help="[MetaPath2Vec, HAN, GTN, HGT, LATTE-1, LATTE-2, LATTE-2proximity]")
     parser.add_argument('--inductive', type=bool, default=True, help="True for inductive, False for transductive")
 
     parser.add_argument('--train_ratio', type=float, default=None,

@@ -1,30 +1,24 @@
-from collections import OrderedDict
-import multiprocessing
-import itertools
 from argparse import ArgumentParser
+from collections import OrderedDict
 
 import numpy as np
-import pandas as pd
-from sklearn.linear_model import LogisticRegression
-from sklearn.multiclass import OneVsRestClassifier
-from sklearn.metrics import precision_recall_fscore_support
-
-import torch
-from torch import nn
-from torch.nn import functional as F
-from torch_geometric.nn import MetaPath2Vec as Metapath2vec
-from torch_geometric.utils import remove_self_loops, add_self_loops
 import pytorch_lightning as pl
-from torch.optim.lr_scheduler import ReduceLROnPlateau
-from torch_geometric.nn.inits import glorot, zeros
-
+import torch
+from cogdl.models.emb.hin2vec import Hin2vec, RWgraph, Hin2vec_layer, tqdm
 from cogdl.models.nn.pyg_gtn import GTN as Gtn
 from cogdl.models.nn.pyg_han import HAN as Han
-from cogdl.models.emb.hin2vec import Hin2vec, RWgraph, Hin2vec_layer, tqdm
+from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import precision_recall_fscore_support
+from sklearn.multiclass import OneVsRestClassifier
+from torch import nn
+from torch.nn import functional as F
+from torch.optim.lr_scheduler import ReduceLROnPlateau
+from torch_geometric.nn import MetaPath2Vec as Metapath2vec
+from torch_geometric.nn.inits import glorot
 
-from data import HeteroNetDataset
-from utils import Metrics
 from conv import LATTE
+from data import HeteroNetDataset
+from hgt import HGTModel
 from losses import ClassificationLoss
 from trainer import NodeClfTrainer
 from utils import filter_samples
@@ -760,98 +754,6 @@ class HIN2Vec(Hin2vec):
             return torch.optim.SparseAdam(self.parameters(), lr=self.hparams.lr)
         else:
             return torch.optim.Adam(self.parameters(), lr=self.hparams.lr)
-
-
-class NodeClfTrainer(ClusteringEvaluator):
-    def __init__(self, hparams, dataset, metrics, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-
-        self.train_metrics = Metrics(prefix="", loss_type=hparams.loss_type, n_classes=dataset.n_classes,
-                                     multilabel=dataset.multilabel, metrics=metrics)
-        self.valid_metrics = Metrics(prefix="val_", loss_type=hparams.loss_type, n_classes=dataset.n_classes,
-                                     multilabel=dataset.multilabel, metrics=metrics)
-        self.test_metrics = Metrics(prefix="test_", loss_type=hparams.loss_type, n_classes=dataset.n_classes,
-                                    multilabel=dataset.multilabel, metrics=metrics)
-        hparams.name = self.name()
-        hparams.inductive = dataset.inductive
-        self.hparams = hparams
-
-    def name(self):
-        if hasattr(self, "_name"):
-            return self._name
-        else:
-            return self.__class__.__name__
-
-    def training_epoch_end(self, outputs):
-        avg_loss = torch.stack([x["loss"] for x in outputs]).mean().item()
-        logs = self.train_metrics.compute_metrics()
-        # logs = _fix_dp_return_type(logs, device=outputs[0]["loss"].device)
-
-        logs.update({"loss": avg_loss})
-        self.train_metrics.reset_metrics()
-        self.log_dict(logs)
-        return None
-
-    def validation_epoch_end(self, outputs):
-        avg_loss = torch.stack([x["val_loss"] for x in outputs]).mean().item()
-        logs = self.valid_metrics.compute_metrics()
-        # logs = _fix_dp_return_type(logs, device=outputs[0]["val_loss"].device)
-        # print({k: np.around(v.item(), decimals=3) for k, v in logs.items()})
-
-        logs.update({"val_loss": avg_loss})
-        self.valid_metrics.reset_metrics()
-        self.log_dict(logs, prog_bar=logs)
-        return None
-
-    def test_epoch_end(self, outputs):
-        avg_loss = torch.stack([x["test_loss"] for x in outputs]).mean().item()
-        if hasattr(self, "test_metrics"):
-            logs = self.test_metrics.compute_metrics()
-            self.test_metrics.reset_metrics()
-        else:
-            logs = {}
-        logs.update({"test_loss": avg_loss})
-
-        self.log_dict(logs, prog_bar=logs)
-        return None
-
-    def train_dataloader(self):
-        return self.dataset.train_dataloader(collate_fn=self.collate_fn, batch_size=self.hparams.batch_size)
-
-    def val_dataloader(self):
-        return self.dataset.valid_dataloader(collate_fn=self.collate_fn, batch_size=self.hparams.batch_size)
-
-    def valtrain_dataloader(self):
-        return self.dataset.valtrain_dataloader(collate_fn=self.collate_fn,
-                                                batch_size=self.hparams.batch_size)
-
-    def test_dataloader(self):
-        return self.dataset.test_dataloader(collate_fn=self.collate_fn, batch_size=self.hparams.batch_size)
-
-    def print_pred_class_counts(self, y_hat, y, multilabel, n_top_class=8):
-        if multilabel:
-            y_pred_dict = pd.Series(y_hat.sum(1).detach().cpu().type(torch.int).numpy()).value_counts().to_dict()
-            y_true_dict = pd.Series(y.sum(1).detach().cpu().type(torch.int).numpy()).value_counts().to_dict()
-            print(f"y_pred {len(y_pred_dict)} classes",
-                  {str(k): v for k, v in itertools.islice(y_pred_dict.items(), n_top_class)})
-            print(f"y_true {len(y_true_dict)} classes",
-                  {str(k): v for k, v in itertools.islice(y_true_dict.items(), n_top_class)})
-        else:
-            y_pred_dict = pd.Series(y_hat.argmax(1).detach().cpu().type(torch.int).numpy()).value_counts().to_dict()
-            y_true_dict = pd.Series(y.detach().cpu().type(torch.int).numpy()).value_counts().to_dict()
-            print(f"y_pred {len(y_pred_dict)} classes",
-                  {str(k): v for k, v in itertools.islice(y_pred_dict.items(), n_top_class)})
-            print(f"y_true {len(y_true_dict)} classes",
-                  {str(k): v for k, v in itertools.islice(y_true_dict.items(), n_top_class)})
-
-    def get_n_params(self):
-        size = 0
-        for name, param in dict(self.named_parameters()).items():
-            nn = 1
-            for s in list(param.size()):
-                nn = nn * s
-            size += nn
-        return size
 
 
 class DenseClassification(nn.Module):
