@@ -1,8 +1,13 @@
 import logging
 import sys
+import warnings
 from argparse import ArgumentParser, Namespace
 
 logger = logging.getLogger("wandb")
+logger.setLevel(logging.ERROR)
+
+warnings.filterwarnings('ignore')
+logger = logging.getLogger("torch")
 logger.setLevel(logging.ERROR)
 
 sys.path.insert(0, "../MultiOmicsGraphEmbedding/")
