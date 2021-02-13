@@ -17,7 +17,7 @@ The wandb logger will generate a link for you inspect the performance metrics as
 option "(1) Private W&B dashboard, no account required".
 
 The models' hyperparameters have been kept as described in the paper. If you'd like to inspect LATTE's algorithm & code,
-open the `conv.py` file and the `LATTENodeClassifier` class in the `methods.py` file.
+open the `conv.py` file and the `LATTENodeClf` class in the `methods.py` file.
 
 Happy Reviewing!
 --Author
