@@ -762,10 +762,10 @@ class HeteroNeighborSampler(HeteroNetDataset):
             n_idx = torch.tensor(n_idx)
 
         # Sample subgraph
-        batch_size, n_id, adjs = self.graph_sampler.sample(n_idx)
+        batch_size, n_id, adjs = self.neighbor_sampler.sample(n_idx)
 
         # Sample neighbors and return `sampled_local_nodes` as the set of all nodes traversed (in local index)
-        sampled_local_nodes = self.graph_sampler.get_nodes_dict(adjs, n_id)
+        sampled_local_nodes = self.neighbor_sampler.get_nodes_dict(adjs, n_id)
 
         # Ensure the sampled nodes only either belongs to training, validation, or testing set
         if "train" in mode:
@@ -795,10 +795,10 @@ class HeteroNeighborSampler(HeteroNetDataset):
              "global_node_index": sampled_local_nodes,
              "x_dict": {}}
 
-        X["edge_index_dict"] = self.graph_sampler.get_edge_index_dict(adjs=adjs,
-                                                                      n_id=n_id,
-                                                                      sampled_local_nodes=sampled_local_nodes,
-                                                                      filter_nodes=filter)
+        X["edge_index_dict"] = self.neighbor_sampler.get_edge_index_dict(adjs=adjs,
+                                                                         n_id=n_id,
+                                                                         sampled_local_nodes=sampled_local_nodes,
+                                                                         filter_nodes=filter)
 
         # x_dict attributes
         if hasattr(self, "x_dict") and len(self.x_dict) > 0:
