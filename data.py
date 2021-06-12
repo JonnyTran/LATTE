@@ -265,16 +265,23 @@ class HeteroNetDataset(torch.utils.data.Dataset, Network):
             self.split_train_val_test(train_ratio=train_ratio, sample_indices=all_idx)
         print(f"Resampled training set at {self.get_train_ratio()}%")
 
-
-    def get_metapaths(self):
+    def get_metapaths(self, khop=False):
         """
         Returns original metapaths including reverse metapaths if use_reverse
         :return:
         """
+        metapaths = self.metapaths
         if self.use_reverse:
-            return self.metapaths + self.get_reverse_metapath(self.metapaths, self.edge_index_dict)
-        else:
-            return self.metapaths
+            metapaths = metapaths + self.get_reverse_metapaths(self.metapaths, self.edge_index_dict)
+
+        return metapaths
+
+    def get_reverse_metapaths(self, metapaths, edge_index_dict) -> list:
+        reverse_metapaths = []
+        for metapath in metapaths:
+            reverse = self.reverse_metapath_name(metapath, edge_index_dict)
+            reverse_metapaths.append(reverse)
+        return reverse_metapaths
 
     def get_num_nodes_dict(self, edge_index_dict):
         num_nodes_dict = {}
