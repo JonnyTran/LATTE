@@ -444,7 +444,6 @@ class HAN(Han, NodeClfTrainer):
 class MetaPath2Vec(Metapath2vec, pl.LightningModule):
     def __init__(self, hparams, dataset: HeteroNetDataset, metrics=None):
         # Hparams
-        self.train_ratio = hparams.train_ratio
         self.batch_size = hparams.batch_size
         self.sparse = hparams.sparse
 
@@ -456,7 +455,7 @@ class MetaPath2Vec(Metapath2vec, pl.LightningModule):
 
         # Dataset
         self.dataset = dataset
-        num_nodes_dict = None
+
         metapaths = self.dataset.get_metapaths()
         self.head_node_type = self.dataset.head_node_type
         edge_index_dict = dataset.edge_index_dict
@@ -470,19 +469,18 @@ class MetaPath2Vec(Metapath2vec, pl.LightningModule):
         metapaths.append(last_metapath)
         print("metapaths", metapaths)
 
-        if dataset.use_reverse:
-            dataset.add_reverse_edge_index(dataset.edge_index_dict)
+        num_nodes_dict = dataset.get_num_nodes_dict(dataset.edge_index_dict)
 
-        super(MetaPath2Vec, self).__init__(edge_index_dict, embedding_dim,
-                                           metapaths, walk_length, context_size,
-                                           walks_per_node,
-                                           num_negative_samples, num_nodes_dict,
-                                           hparams.sparse)
+        super(MetaPath2Vec, self).__init__(edge_index_dict=edge_index_dict, embedding_dim=embedding_dim,
+                                           metapath=metapaths, walk_length=walk_length, context_size=context_size,
+                                           walks_per_node=walks_per_node,
+                                           num_negative_samples=num_negative_samples, num_nodes_dict=num_nodes_dict,
+                                           sparse=hparams.sparse)
 
         hparams.name = self.name()
         hparams.n_params = self.get_n_params()
         hparams.inductive = dataset.inductive
-        self.hparams = hparams
+        self._set_hparams(hparams)
 
     def get_n_params(self):
         size = 0
@@ -506,43 +504,127 @@ class MetaPath2Vec(Metapath2vec, pl.LightningModule):
 
         pos_rw, neg_rw = batch
         loss = self.loss(pos_rw, neg_rw)
-        return {'loss': loss}
+        self.log("loss", loss, logger=True, on_step=True)
+        return loss
 
     def validation_step(self, batch, batch_nb):
         pos_rw, neg_rw = batch
-        loss = self.loss(pos_rw, neg_rw)
-        return {"val_loss": loss}
+        val_loss = self.loss(pos_rw, neg_rw)
+        self.log("val_loss", val_loss, on_step=True)
+        return val_loss
 
     def test_step(self, batch, batch_nb):
         pos_rw, neg_rw = batch
-        loss = self.loss(pos_rw, neg_rw)
-        return {"test_loss": loss}
+        test_loss = self.loss(pos_rw, neg_rw)
+        self.log("test_loss", test_loss, on_step=True)
+        return test_loss
 
     def training_epoch_end(self, outputs):
-        avg_loss = torch.stack([x["loss"] for x in outputs]).sum().item()
         if self.current_epoch % 10 == 0:
             results = self.classification_results(training=True)
         else:
             results = {}
 
-        logs = {"val_loss": avg_loss, **results}
-        self.log_dict(logs, prog_bar=logs)
+        logs = results
+        self.log_dict(logs, prog_bar=True)
         return None
 
     def validation_epoch_end(self, outputs):
-        avg_loss = torch.stack([x["val_loss"] for x in outputs]).sum().item()
-        logs = {"val_loss": avg_loss}
+        logs = {}
         if self.current_epoch % 5 == 0:
             logs.update({"val_" + k: v for k, v in self.classification_results(training=False).items()})
-        self.log_dict(logs, prog_bar=logs)
+        self.log_dict(logs, prog_bar=True)
         return None
 
     def test_epoch_end(self, outputs):
-        avg_loss = torch.stack([x["test_loss"] for x in outputs]).sum().item()
-        logs = {"test_loss": avg_loss}
+        logs = {}
         logs.update({"test_" + k: v for k, v in self.classification_results(training=False, testing=True).items()})
-        self.log_dict(logs, prog_bar=logs)
+        self.log_dict(logs, prog_bar=True)
         return None
+
+    def sample(self, src, num_neighbors: int,
+               subset=None) -> torch.Tensor:
+
+        rowptr, col, _ = src.csr()
+        rowcount = src.storage.rowcount()
+
+        if subset is not None:
+            rowcount = rowcount[subset]
+            rowptr = rowptr[subset]
+
+        rand = torch.rand((rowcount.size(0), num_neighbors), device=col.device)
+        rand.mul_(rowcount.to(rand.dtype).view(-1, 1))
+        rand = rand.to(torch.long)
+        rand.add_(rowptr.view(-1, 1))
+
+        rand = torch.clamp(rand, min=0, max=min(col.size(0) - 1, rand.squeeze(-1).max()))
+
+        return col[rand]
+
+    def pos_sample(self, batch):
+        batch = batch.repeat(self.walks_per_node)
+
+        rws = [batch]
+        for i in range(self.walk_length):
+            keys = self.metapath[i % len(self.metapath)]
+            adj = self.adj_dict[keys]
+            batch = self.sample(adj, num_neighbors=1, subset=batch).squeeze()
+            rws.append(batch)
+
+        rw = torch.stack(rws, dim=-1)
+        rw.add_(self.offset.view(1, -1))
+
+        walks = []
+        num_walks_per_rw = 1 + self.walk_length + 1 - self.context_size
+        for j in range(num_walks_per_rw):
+            walks.append(rw[:, j:j + self.context_size])
+        return torch.cat(walks, dim=0)
+
+    def neg_sample(self, batch):
+        batch = batch.repeat(self.walks_per_node * self.num_negative_samples)
+
+        rws = [batch]
+        for i in range(self.walk_length):
+            keys = self.metapath[i % len(self.metapath)]
+            batch = torch.randint(0, self.num_nodes_dict[keys[-1]],
+                                  (batch.size(0),), dtype=torch.long)
+            rws.append(batch)
+
+        rw = torch.stack(rws, dim=-1)
+        rw.add_(self.offset.view(1, -1))
+
+        walks = []
+        num_walks_per_rw = 1 + self.walk_length + 1 - self.context_size
+        for j in range(num_walks_per_rw):
+            walks.append(rw[:, j:j + self.context_size])
+        return torch.cat(walks, dim=0)
+
+    def collate_fn(self, batch):
+        if not isinstance(batch, torch.Tensor):
+            batch = torch.tensor(batch)
+        return self.pos_sample(batch), self.neg_sample(batch)
+
+    def train_dataloader(self, ):
+        loader = torch.utils.data.DataLoader(range(self.dataset.num_nodes_dict[self.dataset.head_node_type]),
+                                             batch_size=self.hparams.batch_size,
+                                             shuffle=True, num_workers=0,
+                                             collate_fn=self.collate_fn,
+                                             )
+        return loader
+
+    def val_dataloader(self, ):
+        loader = torch.utils.data.DataLoader(self.dataset.validation_idx,
+                                             batch_size=self.hparams.batch_size,
+                                             shuffle=False, num_workers=0,
+                                             collate_fn=self.collate_fn, )
+        return loader
+
+    def test_dataloader(self, ):
+        loader = torch.utils.data.DataLoader(self.dataset.testing_idx,
+                                             batch_size=self.hparams.batch_size,
+                                             shuffle=False, num_workers=0,
+                                             collate_fn=self.collate_fn, )
+        return loader
 
     def classification_results(self, training=True, testing=False):
         if training:
@@ -592,57 +674,17 @@ class MetaPath2Vec(Metapath2vec, pl.LightningModule):
         result["acc" if not multilabel else "accuracy"] = result["precision"]
         return result
 
-    def pos_sample(self, batch):
-        # device = self.embedding.weight.device
-
-        batch = batch.repeat(self.walks_per_node)
-
-        rws = [batch]
-        for i in range(self.walk_length):
-            keys = self.metapath[i % len(self.metapath)]
-            adj = self.adj_dict[keys]
-            batch = adj.sample(num_neighbors=1, subset=batch).squeeze()
-            rws.append(batch)
-
-        rw = torch.stack(rws, dim=-1)
-        rw.add_(self.offset.view(1, -1))
-
-        walks = []
-        num_walks_per_rw = 1 + self.walk_length + 1 - self.context_size
-        for j in range(num_walks_per_rw):
-            walks.append(rw[:, j:j + self.context_size])
-        return torch.cat(walks, dim=0)
-
-    def neg_sample(self, batch):
-        batch = batch.repeat(self.walks_per_node * self.num_negative_samples)
-
-        rws = [batch]
-        for i in range(self.walk_length):
-            keys = self.metapath[i % len(self.metapath)]
-            batch = torch.randint(0, self.num_nodes_dict[keys[-1]],
-                                  (batch.size(0),), dtype=torch.long)
-            rws.append(batch)
-
-        rw = torch.stack(rws, dim=-1)
-        rw.add_(self.offset.view(1, -1))
-
-        walks = []
-        num_walks_per_rw = 1 + self.walk_length + 1 - self.context_size
-        for j in range(num_walks_per_rw):
-            walks.append(rw[:, j:j + self.context_size])
-        return torch.cat(walks, dim=0)
-
-    def collate_fn(self, batch):
-        if not isinstance(batch, torch.Tensor):
-            batch = torch.tensor(batch)
-        return self.pos_sample(batch), self.neg_sample(batch)
-
-
     def configure_optimizers(self):
         if self.sparse:
-            return torch.optim.SparseAdam(self.parameters(), lr=self.hparams.lr)
+            optimizer = torch.optim.SparseAdam(self.parameters(), lr=self.hparams.lr)
         else:
-            return torch.optim.Adam(self.parameters(), lr=self.hparams.lr)
+            optimizer = torch.optim.Adam(self.parameters(), lr=self.hparams.lr)
+
+        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer)
+
+        return {"optimizer": optimizer,
+                "lr_scheduler": scheduler,
+                "monitor": "val_loss"}
 
 
 class HIN2Vec(Hin2vec):
