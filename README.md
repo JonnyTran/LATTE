@@ -11,13 +11,13 @@ To install it, run:
 
 To perform either transductive or inductive experiment runs for a method on a dataset, go to the root repository and run
 the command:
-> python run.py --method [MetaPath2Vec, HAN, GTN, LATTE-1, LATTE-2, LATTE-2proximity] --dataset [ACM, DBLP, IMDB] --inductive [True, False] --num_gpus [0, 1]
+> python run.py --method [MetaPath2Vec, HAN, GTN, HGT, LATTE-1, LATTE-2, LATTE-2proximity] --dataset [ACM, DBLP, IMDB] --inductive [True, False] --num_gpus [0, 1]
 
-The wandb logger will generate a link for you inspect the performance metrics as it trains. If prompted, choose the
+The wandb logger will generate a link for you inspect the performance metrics as it trains and validates. If prompted, choose the
 option "(1) Private W&B dashboard, no account required".
 
 The models' hyperparameters have been kept as described in the paper. If you'd like to inspect LATTE's algorithm & code,
-open the `conv.py` file and the `LATTENodeClassifier` class in the `methods.py` file.
+open the `conv.py` file and the `LATTENodeClf` class in the `methods.py` file.
 
 Happy Reviewing!
 --Author
