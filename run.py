@@ -139,7 +139,7 @@ def train(hparams):
 
         model_hparams.update(hparams.__dict__)
 
-        metrics = ["precision", "recall", "micro_f1",
+        metrics = ["precision", "recall", "micro_f1", "macro_f1",
                    "accuracy" if dataset.multilabel else "ogbn-mag", "top_k"]
 
         model = LATTENodeClf(Namespace(**model_hparams), dataset, collate_fn="neighbor_sampler", metrics=metrics)
@@ -156,6 +156,7 @@ def train(hparams):
         gpus=NUM_GPUS,
         distributed_backend='dp' if NUM_GPUS > 1 else None,
         max_epochs=MAX_EPOCHS,
+        stochastic_weight_avg=True,
         callbacks=[EarlyStopping(monitor='val_loss', patience=10, min_delta=0.0001, strict=False)],
         logger=wandb_logger,
         weights_summary='top',
