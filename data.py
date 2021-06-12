@@ -43,7 +43,7 @@ def load_node_dataset(dataset, method, hparams, train_ratio=None, dir_path="~/da
         elif "LATTE" in method:
             dataset = HeteroNeighborGenerator(DBLP_HANDataset(), neighbor_sizes=[25, 20],
                                               node_types=["A", "P", "C", "T"], head_node_type="A",
-                                              metapaths=[("A", "AC", "C"), ("A", "AP", "P"), ("A", "AT", "T")],
+                                              metapaths=["AC", "AP", "AT"],
                                               add_reverse_metapaths=True, inductive=hparams.inductive)
             dataset.x_dict["P"] = dataset.x_dict["A"]
             dataset.x_dict["C"] = dataset.x_dict["A"]
