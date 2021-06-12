@@ -43,8 +43,7 @@ class LATTENodeClf(NodeClfTrainer):
                               cpu_embeddings=True if "cpu_embedding" in hparams else False,
                               hparams=hparams)
 
-        if not (hparams.disable_concat if "disable_concat" in hparams else False):
-            hparams.embedding_dim = hparams.embedding_dim * hparams.t_order
+        hparams.embedding_dim = hparams.embedding_dim * hparams.n_layers
 
         self.classifier = DenseClassification(hparams)
         # self.classifier = MulticlassClassification(num_feature=hparams.embedding_dim,
