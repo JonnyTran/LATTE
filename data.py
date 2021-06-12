@@ -33,6 +33,8 @@ def load_node_dataset(dataset, method, hparams, train_ratio=None, dir_path="~/da
                                               metapaths=["PA", "AP", "PS", "SP"],
                                               add_reverse_metapaths=False,
                                               head_node_type="P", inductive=hparams.inductive)
+        dataset.x_dict["S"] = dataset.x_dict["P"]
+        dataset.x_dict["A"] = dataset.x_dict["P"]
 
     elif dataset == "DBLP":
         if method == "HAN" or method == "MetaPath2Vec":
@@ -45,14 +47,14 @@ def load_node_dataset(dataset, method, hparams, train_ratio=None, dir_path="~/da
                                               node_types=["A", "P", "C", "T"], head_node_type="A",
                                               metapaths=["AC", "AP", "AT"],
                                               add_reverse_metapaths=True, inductive=hparams.inductive)
-            dataset.x_dict["P"] = dataset.x_dict["A"]
-            dataset.x_dict["C"] = dataset.x_dict["A"]
-            dataset.x_dict["T"] = dataset.x_dict["A"]
         else:
             dataset = HeteroNeighborGenerator(DBLP_GTNDataset(), [25, 20], node_types=["A"], head_node_type="A",
                                               metapaths=["APA", "ApA", "ACA", "AcA"] if "LATTE" in method else None,
                                               add_reverse_metapaths=False,
                                               inductive=hparams.inductive)
+        dataset.x_dict["P"] = dataset.x_dict["A"]
+        dataset.x_dict["C"] = dataset.x_dict["A"]
+        dataset.x_dict["T"] = dataset.x_dict["A"]
 
     elif dataset == "IMDB":
         if method == "HAN" or method == "MetaPath2Vec":
@@ -67,6 +69,8 @@ def load_node_dataset(dataset, method, hparams, train_ratio=None, dir_path="~/da
                                               metapaths=["MD", "DM", "MA", "AM"],
                                               add_reverse_metapaths=False,
                                               head_node_type="M", inductive=hparams.inductive)
+        dataset.x_dict["A"] = dataset.x_dict["M"]
+        dataset.x_dict["D"] = dataset.x_dict["M"]
     else:
         raise Exception(f"dataset {dataset} not found")
     return dataset
