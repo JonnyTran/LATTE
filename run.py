@@ -103,18 +103,18 @@ def train(hparams):
         num_gpus = 1
 
         if "-1" in hparams.method:
-            t_order = 1
+            n_layers = 1
         elif "-2" in hparams.method:
-            t_order = 2
+            n_layers = 2
         elif "-3" in hparams.method:
-            t_order = 3
+            n_layers = 3
         else:
-            t_order = 2
+            n_layers = 2
 
         model_hparams = {
             "embedding_dim": EMBEDDING_DIM,
             "layer_pooling": "concat",
-            "t_order": t_order,
+            "n_layers": n_layers,
             "batch_size": 2 ** batch_order,
             "nb_cls_dense_size": 0,
             "nb_cls_dropout": 0.4,
