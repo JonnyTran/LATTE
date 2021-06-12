@@ -6,7 +6,6 @@ import networkx as nx
 import numpy as np
 import pandas as pd
 import torch
-import torch_sparse
 from cogdl.datasets.gtn_data import GTNDataset, ACM_GTNDataset, DBLP_GTNDataset, IMDB_GTNDataset
 from cogdl.datasets.han_data import HANDataset, ACM_HANDataset, DBLP_HANDataset, IMDB_HANDataset
 from ogb.nodeproppred import PygNodePropPredDataset, DglNodePropPredDataset
@@ -17,9 +16,9 @@ from torch_geometric.data import InMemoryDataset
 from torch_geometric.data.sampler import Adj, EdgeIndex
 from torch_geometric.utils.hetero import group_hetero_graph
 from torch_geometric.utils.num_nodes import maybe_num_nodes
-from torch_sparse import SparseTensor, coalesce
+from torch_sparse import SparseTensor, coalesce, transpose
 
-from conv import is_negative, LATTE
+from conv import is_negative
 
 
 def load_node_dataset(dataset, method, hparams, train_ratio=None, dir_path="~/datasets/"):
@@ -71,6 +70,7 @@ def load_node_dataset(dataset, method, hparams, train_ratio=None, dir_path="~/da
         raise Exception(f"dataset {dataset} not found")
     return dataset
 
+
 class Network:
     def get_networkx(self):
         if not hasattr(self, "G"):
@@ -84,55 +84,6 @@ class Network:
             self.G = G
 
         return self.G
-
-    def get_node_degrees(self, directed=True, order=1):
-        index = pd.concat([pd.DataFrame(range(v), [k, ] * v) for k, v in self.num_nodes_dict.items()],
-                          axis=0).reset_index()
-        ntype_nid = pd.MultiIndex.from_frame(index, names=["node_type", "node"])
-
-        metapaths = list(self.edge_index_dict.keys())
-        metapath_names = [".".join(metapath) if isinstance(metapath, tuple) else metapath for metapath in
-                          metapaths]
-        self.node_degrees = pd.DataFrame(data=0, index=ntype_nid, columns=metapath_names)
-
-        for metapath, name in zip(metapaths, metapath_names):
-            edge_index = self.edge_index_dict[metapath]
-            head, tail = metapath[0], metapath[-1]
-
-            D = torch_sparse.SparseTensor(row=edge_index[0], col=edge_index[1],
-                                          sparse_sizes=(self.num_nodes_dict[head],
-                                                        self.num_nodes_dict[tail]))
-
-            self.node_degrees.loc[(head, name)] = (
-                    self.node_degrees.loc[(head, name)] + D.storage.rowcount().numpy()).values
-            if not directed:
-                self.node_degrees.loc[(tail, name)] = (
-                        self.node_degrees.loc[(tail, name)] + D.storage.colcount().numpy()).values
-
-        if order >= 2:
-            global_node_idx = self.get_node_id_dict(self.edge_index_dict)
-            new_edge_index_dict = LATTE.join_edge_indexes(edge_index_dict_A=self.edge_index_dict,
-                                                          edge_index_dict_B=self.edge_index_dict,
-                                                          global_node_idx=global_node_idx)
-
-            metapaths = list(new_edge_index_dict.keys())
-            metapath_names = [".".join(metapath) if isinstance(metapath, tuple) else metapath for metapath in
-                              metapaths]
-            for metapath, name in zip(metapaths, metapath_names):
-                edge_index = new_edge_index_dict[metapath]
-                head, tail = metapath[0], metapath[-1]
-
-            D = torch_sparse.SparseTensor(row=edge_index[0], col=edge_index[1],
-                                          sparse_sizes=(self.num_nodes_dict[head],
-                                                        self.num_nodes_dict[tail]))
-
-            self.node_degrees.loc[(head, name)] = (
-                    self.node_degrees.loc[(head, name)] + D.storage.rowcount().numpy()).values
-            if not directed:
-                self.node_degrees.loc[(tail, name)] = (
-                        self.node_degrees.loc[(tail, name)] + D.storage.colcount().numpy()).values
-
-        return self.node_degrees
 
     def get_projection_pos(self, embeddings_all, UMAP: classmethod, n_components=2):
         pos = UMAP(n_components=n_components).fit_transform(embeddings_all)
@@ -343,14 +294,15 @@ class HeteroNetDataset(torch.utils.data.Dataset, Network):
 
         return node_ids_dict
 
-    @staticmethod
-    def add_reverse_edge_index(edge_index_dict) -> None:
+    def add_reverse_edge_index(self, edge_index_dict) -> None:
         reverse_edge_index_dict = {}
         for metapath in edge_index_dict:
             if is_negative(metapath) or edge_index_dict[metapath] == None: continue
-            reverse_metapath = HeteroNetDataset.get_reverse_metapath_name(metapath, edge_index_dict)
+            reverse_metapath = self.reverse_metapath_name(metapath, edge_index_dict)
 
-            reverse_edge_index_dict[reverse_metapath] = edge_index_dict[metapath][[1, 0], :]
+            reverse_edge_index_dict[reverse_metapath] = transpose(index=edge_index_dict[metapath], value=None,
+                                                                  m=self.num_nodes_dict[metapath[0]],
+                                                                  n=self.num_nodes_dict[metapath[-1]])[0]
         edge_index_dict.update(reverse_edge_index_dict)
 
     @staticmethod
