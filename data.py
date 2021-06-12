@@ -29,13 +29,13 @@ def load_node_dataset(dataset, method, hparams, train_ratio=None, dir_path="~/da
                                               add_reverse_metapaths=True,
                                               head_node_type="P", inductive=hparams.inductive)
         else:
-            dataset = HeteroNeighborGenerator(ACM_GTNDataset(), [25, 20], node_types=["P"],
-                                              metapaths=["PAP", "PA_P", "PSP", "PS_P"] if "LATTE" in method else None,
+            dataset = HeteroNeighborGenerator(ACM_GTNDataset(), [25, 20], node_types=["P", "A", "S"],
+                                              metapaths=["PA", "AP", "PS", "SP"],
                                               add_reverse_metapaths=False,
                                               head_node_type="P", inductive=hparams.inductive)
 
     elif dataset == "DBLP":
-        if method == "HAN":
+        if method == "HAN" or method == "MetaPath2Vec":
             dataset = HeteroNeighborGenerator(DBLP_HANDataset(), [25, 20],
                                               node_types=["A"], head_node_type="A", metapaths=None,
                                               add_reverse_metapaths=True,
@@ -62,8 +62,9 @@ def load_node_dataset(dataset, method, hparams, train_ratio=None, dir_path="~/da
                                               head_node_type="M",
                                               inductive=hparams.inductive)
         else:
-            dataset = HeteroNeighborGenerator(IMDB_GTNDataset(), neighbor_sizes=[25, 20], node_types=["M"],
-                                              metapaths=["MDM", "MD_M", "MAM", "MA_M"] if "LATTE" in method else None,
+            dataset = HeteroNeighborGenerator(IMDB_GTNDataset(), neighbor_sizes=[25, 20],
+                                              node_types=["M", "A", "D"],
+                                              metapaths=["MD", "DM", "MA", "AM"],
                                               add_reverse_metapaths=False,
                                               head_node_type="M", inductive=hparams.inductive)
     else:
