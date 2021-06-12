@@ -780,7 +780,7 @@ class HeteroNeighborSampler(torch.utils.data.DataLoader):
         return batch_size, n_id, adjs
 
 
-class NeighborSampler():
+class NeighborSampler(Sampler):
     def __init__(self, neighbor_sizes, edge_index_dict, num_nodes_dict, node_types, head_node_type):
         """
         Args:
