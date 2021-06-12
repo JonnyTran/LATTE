@@ -758,24 +758,14 @@ class HeteroNeighborSampler(HeteroNetDataset):
         return sampled_nodes
 
     def sample(self, n_idx, mode):
-        """
-
-        :param n_idx: A tensor of a batch of node indices in training_idx, validation_idx, or testing_idx
-        :return:
-        """
         if not isinstance(n_idx, torch.Tensor) and not isinstance(n_idx, dict):
             n_idx = torch.tensor(n_idx)
 
-        if isinstance(n_idx, dict):
-            n_idx_to_sample = torch.cat([self.local2global[ntype][nid] for ntype, nid in n_idx.items()], 0)
-        else:
-            n_idx_to_sample = self.local2global[self.head_node_type][n_idx]
+        # Sample subgraph
+        batch_size, n_id, adjs = self.graph_sampler.sample(n_idx)
 
-        batch_size, n_id, adjs = self.neighbor_sampler.sample(n_idx_to_sample)
-        if not isinstance(adjs, list):
-            adjs = [adjs]
         # Sample neighbors and return `sampled_local_nodes` as the set of all nodes traversed (in local index)
-        sampled_local_nodes = self.get_local_node_index(adjs, n_id)
+        sampled_local_nodes = self.graph_sampler.get_nodes_dict(adjs, n_id)
 
         # Ensure the sampled nodes only either belongs to training, validation, or testing set
         if "train" in mode:
@@ -805,37 +795,34 @@ class HeteroNeighborSampler(HeteroNetDataset):
              "global_node_index": sampled_local_nodes,
              "x_dict": {}}
 
-        local2batch = {
-            node_type: dict(zip(sampled_local_nodes[node_type].numpy(),
-                                range(len(sampled_local_nodes[node_type])))
-                            ) for node_type in sampled_local_nodes}
-
-        X["edge_index_dict"] = self.get_local_edge_index_dict(adjs=adjs, n_id=n_id,
-                                                              sampled_local_nodes=sampled_local_nodes,
-                                                              local2batch=local2batch,
-                                                              filter_nodes=filter)
+        X["edge_index_dict"] = self.graph_sampler.get_edge_index_dict(adjs=adjs,
+                                                                      n_id=n_id,
+                                                                      sampled_local_nodes=sampled_local_nodes,
+                                                                      filter_nodes=filter)
 
         # x_dict attributes
         if hasattr(self, "x_dict") and len(self.x_dict) > 0:
             X["x_dict"] = {node_type: self.x_dict[node_type][X["global_node_index"][node_type]] \
-                           for node_type in self.x_dict}
+                           for node_type in self.x_dict if node_type in X["global_node_index"]}
 
         # y_dict
         if hasattr(self, "y_dict") and len(self.y_dict) > 1:
-            y = {node_type: y_true[X["global_node_index"][node_type]] for node_type, y_true in self.y_dict.items()}
+            y = {node_type: y_true[X["global_node_index"][node_type]] \
+                 for node_type, y_true in self.y_dict.items()}
         elif hasattr(self, "y_dict"):
             y = self.y_dict[self.head_node_type][X["global_node_index"][self.head_node_type]].squeeze(-1)
         else:
             y = None
 
-        weights = (y != -1) & np.isin(X["global_node_index"][self.head_node_type], allowed_nodes)
+        # Weights
+        weights = (y != -1) if y.dim() == 1 else (y != -1).all(1)
+        weights = weights & np.isin(X["global_node_index"][self.head_node_type], allowed_nodes)
         weights = torch.tensor(weights, dtype=torch.float)
 
-        if hasattr(self, "x_dict") and len(self.x_dict) > 0:
-            assert X["global_node_index"][self.head_node_type].size(0) == X["x_dict"][self.head_node_type].size(0)
+        # Higher weights for sampled focal nodes in `n_idx`
+        seed_node_idx = np.isin(X["global_node_index"][self.head_node_type], n_idx, invert=True)
+        weights[seed_node_idx] = weights[seed_node_idx] * 0.2
 
-        # assert y.size(0) == X["global_node_index"][self.head_node_type].size(0)
-        # assert y.size(0) == weights.size(0)
         return X, y, weights
 
     def get_local_edge_index_dict(self, adjs, n_id, sampled_local_nodes: dict, local2batch: dict,

@@ -113,13 +113,17 @@ def train(hparams):
 
         model_hparams = {
             "embedding_dim": EMBEDDING_DIM,
+            "layer_pooling": "concat",
             "t_order": t_order,
             "batch_size": 2 ** batch_order,
             "nb_cls_dense_size": 0,
             "nb_cls_dropout": 0.4,
             "activation": "relu",
+            "dropout": 0.2,
             "attn_heads": 2,
             "attn_activation": "sharpening",
+            "edge_sampling": False,
+            "edge_threshold": 0.5,
             "attn_dropout": 0.2,
             "loss_type": "BCE" if dataset.multilabel else "SOFTMAX_CROSS_ENTROPY",
             "use_proximity": True if "proximity" in hparams.method else False,
