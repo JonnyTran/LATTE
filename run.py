@@ -122,6 +122,8 @@ def train(hparams):
             "dropout": 0.2,
             "attn_heads": 2,
             "attn_activation": "sharpening",
+            "batchnorm": False,
+            "layernorm": False,
             "edge_sampling": False,
             "edge_threshold": 0.5,
             "attn_dropout": 0.2,
